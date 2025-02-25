@@ -44,7 +44,7 @@ jobs:
         id: deployment
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./site
+          path: ./libraries/dagster-iceberg/site
   deploy:
     needs: build
     environment:
