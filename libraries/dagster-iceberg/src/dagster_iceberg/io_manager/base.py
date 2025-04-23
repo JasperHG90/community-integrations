@@ -1,10 +1,11 @@
 import enum
 from abc import abstractmethod
-from contextlib import contextmanager  # noqa
-from typing import Dict, Iterator, Optional, Sequence, Type, TypedDict, cast  # noqa
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from typing import TypedDict, cast
 
 from dagster import OutputContext
-from dagster._annotations import experimental, public
+from dagster._annotations import public
 from dagster._config.pythonic_config import ConfigurableIOManagerFactory
 from dagster._core.definitions.time_window_partitions import TimeWindow
 from dagster._core.storage.db_io_manager import (
@@ -18,7 +19,8 @@ from pydantic import Field
 from pyiceberg.catalog import Catalog, load_catalog
 
 from dagster_iceberg._db_io_manager import CustomDbIOManager
-from dagster_iceberg.config import IcebergCatalogConfig  # noqa
+from dagster_iceberg._utils import preview
+from dagster_iceberg.config import IcebergCatalogConfig
 
 
 class PartitionSpecUpdateMode(enum.Enum):
@@ -31,34 +33,38 @@ class SchemaUpdateMode(enum.Enum):
     update = "update"
 
 
-class DbIoManagerImplementation(enum.Enum):
+class DbIOManagerImplementation(enum.Enum):
     default = "default"
     custom = "custom"
 
 
 class _IcebergCatalogProperties(TypedDict):
-    properties: Dict[str, str]
+    properties: dict[str, str]
 
 
 class _IcebergTableIOManagerResourceConfig(TypedDict):
     name: str
-    config: Optional[_IcebergCatalogProperties]
-    schema_: Optional[str]
-    db_io_manager: DbIoManagerImplementation
+    config: _IcebergCatalogProperties | None
+    schema_: str | None
+    db_io_manager: DbIOManagerImplementation
     partition_spec_update_mode: PartitionSpecUpdateMode
     schema_update_mode: SchemaUpdateMode
 
 
-@experimental
+@preview
 class IcebergDbClient(DbClient):
     @staticmethod
     def delete_table_slice(
-        context: OutputContext, table_slice: TableSlice, connection: Catalog
+        context: OutputContext,
+        table_slice: TableSlice,
+        connection: Catalog,
     ) -> None: ...
 
     @staticmethod
     def ensure_schema_exists(
-        context: OutputContext, table_slice: TableSlice, connection: Catalog
+        context: OutputContext,
+        table_slice: TableSlice,
+        connection: Catalog,
     ) -> None:
         connection.list_namespaces(table_slice.schema)
 
@@ -75,14 +81,15 @@ class IcebergDbClient(DbClient):
         ):
             query = f"SELECT {col_str} FROM {table_slice.schema}.{table_slice.table} WHERE\n"
             return query + _partition_where_clause(table_slice.partition_dimensions)
-        else:
-            return f"""SELECT {col_str} FROM {table_slice.schema}.{table_slice.table}"""
+
+        return f"""SELECT {col_str} FROM {table_slice.schema}.{table_slice.table}"""
 
     @staticmethod
     @contextmanager
     def connect(context, table_slice: TableSlice) -> Iterator[Catalog]:
         resource_config = cast(
-            _IcebergTableIOManagerResourceConfig, context.resource_config
+            _IcebergTableIOManagerResourceConfig,
+            context.resource_config,
         )
         # Config passed as env variables or using config file.
         #  See: https://py.iceberg.apache.org/configuration/
@@ -90,11 +97,12 @@ class IcebergDbClient(DbClient):
             yield load_catalog(name=resource_config["name"])
         else:
             yield load_catalog(
-                name=resource_config["name"], **resource_config["config"]["properties"]
+                name=resource_config["name"],
+                **resource_config["config"]["properties"],
             )
 
 
-@experimental
+@preview
 @public
 class IcebergIOManager(ConfigurableIOManagerFactory):
     """Base class for an IO manager definition that reads inputs from and writes outputs to Iceberg tables.
@@ -107,7 +115,7 @@ class IcebergIOManager(ConfigurableIOManagerFactory):
     from dagster import Definitions, asset
 
     from dagster_iceberg.config import IcebergCatalogConfig
-    from dagster_iceberg.io_manager.arrow import IcebergPyarrowIOManager
+    from dagster_iceberg.io_manager.arrow import PyArrowIcebergIOManager
 
     CATALOG_URI = "sqlite:////home/vscode/workspace/.tmp/examples/select_columns/catalog.db"
     CATALOG_WAREHOUSE = (
@@ -116,7 +124,7 @@ class IcebergIOManager(ConfigurableIOManagerFactory):
 
 
     resources = {
-        "io_manager": IcebergPyarrowIOManager(
+        "io_manager": PyArrowIcebergIOManager(
             name="test",
             config=IcebergCatalogConfig(
                 properties={"uri": CATALOG_URI, "warehouse": CATALOG_WAREHOUSE}
@@ -173,18 +181,18 @@ class IcebergIOManager(ConfigurableIOManagerFactory):
     """
 
     name: str = Field(description="The name of the iceberg catalog.")
-    config: Optional[IcebergCatalogConfig] = Field(
+    config: IcebergCatalogConfig | None = Field(
         description="Additional configuration properties for the iceberg catalog. See <https://py.iceberg.apache.org/configuration/>"
         " for passing these as environment variables or using a configuration file.",
         default=None,
     )
-    schema_: Optional[str] = Field(
+    schema_: str | None = Field(
         default=None,
         alias="namespace",
         description="Name of the iceberg catalog namespace to use.",
     )  # schema is a reserved word for pydantic
-    db_io_manager: DbIoManagerImplementation = Field(
-        default=DbIoManagerImplementation.default,
+    db_io_manager: DbIOManagerImplementation = Field(
+        default=DbIOManagerImplementation.default,
         description="The implementation of the DbIOManager to use. 'default' uses the dagster default 'DbIOManager'."
         " 'custom' uses the custom 'CustomDbIOManager' that allows you to use additional mappings. See <docs>.",
     )
@@ -194,24 +202,24 @@ class IcebergIOManager(ConfigurableIOManagerFactory):
     def type_handlers() -> Sequence[DbTypeHandler]: ...
 
     @staticmethod
-    def default_load_type() -> Optional[Type]:
+    def default_load_type() -> type | None:
         return None
 
     def create_io_manager(self, context) -> DbIOManager:
         if self.config is not None:
             self.config.model_dump()
-        IoManagerImplementation = (
+        IOManagerImplementation = (
             DbIOManager
-            if self.db_io_manager == DbIoManagerImplementation.default
+            if self.db_io_manager == DbIOManagerImplementation.default
             else CustomDbIOManager
         )
-        return IoManagerImplementation(
-            db_client=IcebergDbClient(),
-            database="iceberg",
-            schema=self.schema_,
+        return IOManagerImplementation(
             type_handlers=self.type_handlers(),
-            default_load_type=self.default_load_type(),
+            db_client=IcebergDbClient(),
+            database=self.name,
+            schema=self.schema_,
             io_manager_name="IcebergIOManager",
+            default_load_type=self.default_load_type(),
         )
 
 

@@ -1,12 +1,13 @@
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, cast
 
-import dagster._seven as seven
-from typing import cast
+import dagster_shared.seven as seven
 from dagster import (
     Field,
     Permissive,
     StringSource,
+)
+from dagster import (
     _check as check,
 )
 from dagster._config.config_type import Noneable
@@ -21,7 +22,7 @@ from obstore.store import S3Store
 from dagster_obstore._base.log_manager import BaseCloudStorageComputeLogManager
 
 if TYPE_CHECKING:
-    from obstore.store import ClientConfig, S3ConfigInput
+    from obstore.store import ClientConfig, S3Config
 
 POLLING_INTERVAL = 5
 
@@ -60,7 +61,7 @@ class S3ComputeLogManager(BaseCloudStorageComputeLogManager, ConfigurableClass):
         access_key_id (Optional[str]): access key id to authenticate, if not passed it's parsed from the Environment.
         secret_access_key (Optional[str]): secret access key to authenticate, if not passed it's parsed from the Environment.
         local_dir (Optional[str]): Path to the local directory in which to stage logs. Default:
-            ``dagster._seven.get_system_temp_directory()``.
+            ``dagster_shared.seven.get_system_temp_directory()``.
         prefix (Optional[str]): Prefix for the log file keys.
         allow_http (Optional[bool]): Whether or not to allow http connections. Default False.
         allow_invalid_certificates (Optional[bool]): Whether or not to allow invalid certificates. Default False.
@@ -89,7 +90,7 @@ class S3ComputeLogManager(BaseCloudStorageComputeLogManager, ConfigurableClass):
         endpoint: Optional[str] = None,
         skip_empty_files: Optional[bool] = False,
         upload_interval: Optional[int] = None,
-        extra_s3_args: Optional["S3ConfigInput"] = None,
+        extra_s3_args: Optional["S3Config"] = None,
         show_url_only: Optional[bool] = False,
         region: Optional[str] = None,
     ):
@@ -117,7 +118,7 @@ class S3ComputeLogManager(BaseCloudStorageComputeLogManager, ConfigurableClass):
         self._show_url_only = show_url_only
         self._region = region
 
-        s3_config: S3ConfigInput = {}
+        s3_config: S3Config = {}
         client_config: ClientConfig = {}
         if access_key_id:
             s3_config["access_key_id"] = access_key_id
@@ -139,7 +140,7 @@ class S3ComputeLogManager(BaseCloudStorageComputeLogManager, ConfigurableClass):
             bucket=bucket,
             config=s3_config,
             client_options=client_config,
-            **extra_s3_args if extra_s3_args is not None else {},
+            **extra_s3_args if extra_s3_args is not None else {},  # type: ignore
         )
 
     @classmethod

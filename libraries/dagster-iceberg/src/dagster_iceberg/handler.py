@@ -1,27 +1,36 @@
 from abc import abstractmethod
-from typing import Generic, TypeVar, Union, cast
+from typing import Generic, TypeVar, cast
 
 import pyarrow as pa
-from dagster import InputContext, MetadataValue, OutputContext, TableColumn, TableSchema
-from dagster._annotations import experimental, public
+from dagster import (
+    InputContext,
+    MetadataValue,
+    OutputContext,
+    TableColumn,
+    TableSchema,
+)
+from dagster._annotations import public
 from dagster._core.storage.db_io_manager import DbTypeHandler, TableSlice
 from pyiceberg import table as ibt
 from pyiceberg.catalog import Catalog
 from pyiceberg.table.snapshots import Snapshot
 
-from dagster_iceberg._utils import table_writer
+from dagster_iceberg._utils import preview, table_writer
 
 U = TypeVar("U")
 
-ArrowTypes = Union[pa.Table, pa.RecordBatchReader]
+ArrowTypes = pa.Table | pa.RecordBatchReader
 
 
-@experimental
 @public
+@preview
 class IcebergBaseTypeHandler(DbTypeHandler[U], Generic[U]):
     @abstractmethod
     def to_data_frame(
-        self, table: ibt.Table, table_slice: TableSlice, target_type: type
+        self,
+        table: ibt.Table,
+        table_slice: TableSlice,
+        target_type: type,
     ) -> U:
         pass
 
@@ -67,11 +76,11 @@ class IcebergBaseTypeHandler(DbTypeHandler[U], Generic[U]):
                         columns=[
                             TableColumn(name=f["name"], type=str(f["type"]))
                             for f in table_.schema().model_dump()["fields"]
-                        ]
-                    )
+                        ],
+                    ),
                 ),
                 **current_snapshot.model_dump(),
-            }
+            },
         )
 
     def load_input(

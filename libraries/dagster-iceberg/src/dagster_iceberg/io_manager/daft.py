@@ -1,24 +1,27 @@
-from typing import Sequence, Type
+from collections.abc import Sequence
 
 try:
     import daft as da
 except ImportError as e:
     raise ImportError("Please install dagster-iceberg with the 'daft' extra.") from e
 import pyarrow as pa
-from dagster._annotations import experimental, public
+from dagster._annotations import public
 from dagster._core.storage.db_io_manager import DbTypeHandler, TableSlice
 from pyiceberg import table as ibt
 
 from dagster_iceberg import handler as _handler
 from dagster_iceberg import io_manager as _io_manager
-from dagster_iceberg._utils import DagsterPartitionToDaftSqlPredicateMapper
+from dagster_iceberg._utils import DagsterPartitionToDaftSqlPredicateMapper, preview
 
 
-class _IcebergDaftTypeHandler(_handler.IcebergBaseTypeHandler[da.DataFrame]):
+class _DaftIcebergTypeHandler(_handler.IcebergBaseTypeHandler[da.DataFrame]):
     """Type handler that converts data between Iceberg tables and polars DataFrames"""
 
     def to_data_frame(
-        self, table: ibt.Table, table_slice: TableSlice, target_type: Type[da.DataFrame]
+        self,
+        table: ibt.Table,
+        table_slice: TableSlice,
+        target_type: type[da.DataFrame],
     ) -> da.DataFrame:
         selected_fields: str = (
             ",".join(table_slice.columns) if table_slice.columns is not None else "*"
@@ -32,7 +35,7 @@ class _IcebergDaftTypeHandler(_handler.IcebergBaseTypeHandler[da.DataFrame]):
             ).partition_dimensions_to_filters()
             row_filter = " AND ".join(expressions)
 
-        ddf = table.to_daft()  # type: ignore # noqa
+        ddf = table.to_daft()  # noqa: F841, `daft.sql` detects `daft.DataFrame` objects
 
         stmt = f"SELECT {selected_fields} FROM ddf"
         if row_filter is not None:
@@ -44,13 +47,13 @@ class _IcebergDaftTypeHandler(_handler.IcebergBaseTypeHandler[da.DataFrame]):
         return obj.to_arrow()
 
     @property
-    def supported_types(self) -> Sequence[Type[object]]:
+    def supported_types(self) -> Sequence[type[object]]:
         return [da.DataFrame]
 
 
-@experimental
+@preview
 @public
-class IcebergDaftIOManager(_io_manager.IcebergIOManager):
+class DaftIcebergIOManager(_io_manager.IcebergIOManager):
     """An IO manager definition that reads inputs from and writes outputs to Iceberg tables using Daft.
 
     Examples:
@@ -61,7 +64,7 @@ class IcebergDaftIOManager(_io_manager.IcebergIOManager):
     from dagster import Definitions, asset
 
     from dagster_iceberg.config import IcebergCatalogConfig
-    from dagster_iceberg.io_manager.daft import IcebergDaftIOManager
+    from dagster_iceberg.io_manager.daft import DaftIcebergIOManager
 
     CATALOG_URI = "sqlite:////home/vscode/workspace/.tmp/examples/select_columns/catalog.db"
     CATALOG_WAREHOUSE = (
@@ -70,7 +73,7 @@ class IcebergDaftIOManager(_io_manager.IcebergIOManager):
 
 
     resources = {
-        "io_manager": IcebergDaftIOManager(
+        "io_manager": DaftIcebergIOManager(
             name="test",
             config=IcebergCatalogConfig(
                 properties={"uri": CATALOG_URI, "warehouse": CATALOG_WAREHOUSE}
@@ -128,4 +131,4 @@ class IcebergDaftIOManager(_io_manager.IcebergIOManager):
 
     @staticmethod
     def type_handlers() -> Sequence[DbTypeHandler]:
-        return [_IcebergDaftTypeHandler()]
+        return [_DaftIcebergTypeHandler()]

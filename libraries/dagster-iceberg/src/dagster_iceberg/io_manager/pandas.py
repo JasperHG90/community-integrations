@@ -1,4 +1,4 @@
-from typing import Sequence, Type
+from collections.abc import Sequence
 
 try:
     import pandas as pd
@@ -6,15 +6,16 @@ except ImportError as e:
     raise ImportError("Please install dagster-iceberg with the 'pandas' extra.") from e
 import pyarrow as pa
 from dagster import InputContext
-from dagster._annotations import experimental, public
+from dagster._annotations import public
 from dagster._core.storage.db_io_manager import DbTypeHandler, TableSlice
 from pyiceberg.catalog import Catalog
 
 from dagster_iceberg import io_manager as _io_manager
-from dagster_iceberg.io_manager.arrow import _IcebergPyArrowTypeHandler
+from dagster_iceberg._utils import preview
+from dagster_iceberg.io_manager.arrow import _PyArrowIcebergTypeHandler
 
 
-class _IcebergPandasTypeHandler(_IcebergPyArrowTypeHandler):
+class _PandasIcebergTypeHandler(_PyArrowIcebergTypeHandler):
     """Type handler that converts data between Iceberg tables and pyarrow Tables"""
 
     def to_arrow(self, obj: pd.DataFrame) -> pa.Table:
@@ -35,13 +36,13 @@ class _IcebergPandasTypeHandler(_IcebergPyArrowTypeHandler):
         return tbl.read_pandas()
 
     @property
-    def supported_types(self) -> Sequence[Type[object]]:
+    def supported_types(self) -> Sequence[type[object]]:
         return [pd.DataFrame]
 
 
-@experimental
+@preview
 @public
-class IcebergPandasIOManager(_io_manager.IcebergIOManager):
+class PandasIcebergIOManager(_io_manager.IcebergIOManager):
     """An IO manager definition that reads inputs from and writes outputs to Iceberg tables using Pandas.
 
     Examples:
@@ -51,7 +52,7 @@ class IcebergPandasIOManager(_io_manager.IcebergIOManager):
     from dagster import Definitions, asset
 
     from dagster_iceberg.config import IcebergCatalogConfig
-    from dagster_iceberg.io_manager.pandas import IcebergPandasIOManager
+    from dagster_iceberg.io_manager.pandas import PandasIcebergIOManager
 
     CATALOG_URI = "sqlite:////home/vscode/workspace/.tmp/examples/select_columns/catalog.db"
     CATALOG_WAREHOUSE = (
@@ -60,7 +61,7 @@ class IcebergPandasIOManager(_io_manager.IcebergIOManager):
 
 
     resources = {
-        "io_manager": IcebergPandasIOManager(
+        "io_manager": PandasIcebergIOManager(
             name="test",
             config=IcebergCatalogConfig(
                 properties={"uri": CATALOG_URI, "warehouse": CATALOG_WAREHOUSE}
@@ -116,4 +117,4 @@ class IcebergPandasIOManager(_io_manager.IcebergIOManager):
 
     @staticmethod
     def type_handlers() -> Sequence[DbTypeHandler]:
-        return [_IcebergPandasTypeHandler()]
+        return [_PandasIcebergTypeHandler()]

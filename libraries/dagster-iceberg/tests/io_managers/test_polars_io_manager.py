@@ -1,5 +1,4 @@
 import datetime as dt
-from typing import Dict
 
 import polars as pl
 import pytest
@@ -15,14 +14,16 @@ from dagster import (
 from pyiceberg.catalog import Catalog
 
 from dagster_iceberg.config import IcebergCatalogConfig
-from dagster_iceberg.io_manager.polars import IcebergPolarsIOManager
+from dagster_iceberg.io_manager.polars import PolarsIcebergIOManager
 
 
 @pytest.fixture
 def io_manager(
-    catalog_name: str, namespace: str, catalog_config_properties: Dict[str, str]
-) -> IcebergPolarsIOManager:
-    return IcebergPolarsIOManager(
+    catalog_name: str,
+    namespace: str,
+    catalog_config_properties: dict[str, str],
+) -> PolarsIcebergIOManager:
+    return PolarsIcebergIOManager(
         name=catalog_name,
         config=IcebergCatalogConfig(properties=catalog_config_properties),
         namespace=namespace,
@@ -30,32 +31,32 @@ def io_manager(
 
 
 @pytest.fixture
-def custom_db_io_manager(io_manager: IcebergPolarsIOManager):
+def custom_db_io_manager(io_manager: PolarsIcebergIOManager):
     return io_manager.create_io_manager(None)
 
 
 # NB: iceberg table identifiers are namespace + asset names (see below)
-@pytest.fixture(scope="function")
+@pytest.fixture
 def asset_b_df_table_identifier(namespace: str) -> str:
     return f"{namespace}.b_df"
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def asset_b_plus_one_table_identifier(namespace: str) -> str:
     return f"{namespace}.b_plus_one"
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def asset_hourly_partitioned_table_identifier(namespace: str) -> str:
     return f"{namespace}.hourly_partitioned"
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def asset_daily_partitioned_table_identifier(namespace: str) -> str:
     return f"{namespace}.daily_partitioned"
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def asset_multi_partitioned_table_identifier(namespace: str) -> str:
     return f"{namespace}.multi_partitioned"
 
@@ -105,17 +106,18 @@ def daily_partitioned(context: AssetExecutionContext) -> pl.DataFrame:
     partitions_def=MultiPartitionsDefinition(
         partitions_defs={
             "date": DailyPartitionsDefinition(
-                start_date="2022-01-01", end_date="2022-01-10"
+                start_date="2022-01-01",
+                end_date="2022-01-10",
             ),
             "category": StaticPartitionsDefinition(["a", "b", "c"]),
-        }
+        },
     ),
     config_schema={"value": str},
     metadata={
         "partition_expr": {
             "date": "date_this",
             "category": "category_this",
-        }
+        },
     },
 )
 def multi_partitioned(context: AssetExecutionContext) -> pl.DataFrame:
@@ -129,7 +131,7 @@ def multi_partitioned(context: AssetExecutionContext) -> pl.DataFrame:
             "value": [value],
             "b": [1],
             "category_this": [category],
-        }
+        },
     )
 
 
@@ -137,7 +139,7 @@ def test_iceberg_io_manager_with_assets(
     asset_b_df_table_identifier: str,
     asset_b_plus_one_table_identifier: str,
     catalog: Catalog,
-    io_manager: IcebergPolarsIOManager,
+    io_manager: PolarsIcebergIOManager,
 ):
     resource_defs = {"io_manager": io_manager}
 
@@ -157,7 +159,7 @@ def test_iceberg_io_manager_with_assets(
 def test_iceberg_io_manager_with_daily_partitioned_assets(
     asset_daily_partitioned_table_identifier: str,
     catalog: Catalog,
-    io_manager: IcebergPolarsIOManager,
+    io_manager: PolarsIcebergIOManager,
 ):
     resource_defs = {"io_manager": io_manager}
 
@@ -167,7 +169,7 @@ def test_iceberg_io_manager_with_daily_partitioned_assets(
             partition_key=date,
             resources=resource_defs,
             run_config={
-                "ops": {"my_schema__daily_partitioned": {"config": {"value": "1"}}}
+                "ops": {"my_schema__daily_partitioned": {"config": {"value": "1"}}},
             },
         )
         assert res.success
@@ -187,7 +189,7 @@ def test_iceberg_io_manager_with_daily_partitioned_assets(
 def test_iceberg_io_manager_with_hourly_partitioned_assets(
     asset_hourly_partitioned_table_identifier: str,
     catalog: Catalog,
-    io_manager: IcebergPolarsIOManager,
+    io_manager: PolarsIcebergIOManager,
 ):
     resource_defs = {"io_manager": io_manager}
 
@@ -197,7 +199,7 @@ def test_iceberg_io_manager_with_hourly_partitioned_assets(
             partition_key=date,
             resources=resource_defs,
             run_config={
-                "ops": {"my_schema__hourly_partitioned": {"config": {"value": "1"}}}
+                "ops": {"my_schema__hourly_partitioned": {"config": {"value": "1"}}},
             },
         )
         assert res.success
@@ -217,7 +219,7 @@ def test_iceberg_io_manager_with_hourly_partitioned_assets(
 def test_iceberg_io_manager_with_multipartitioned_assets(
     asset_multi_partitioned_table_identifier: str,
     catalog: Catalog,
-    io_manager: IcebergPolarsIOManager,
+    io_manager: PolarsIcebergIOManager,
 ):
     resource_defs = {"io_manager": io_manager}
 
@@ -234,7 +236,7 @@ def test_iceberg_io_manager_with_multipartitioned_assets(
             partition_key=key,
             resources=resource_defs,
             run_config={
-                "ops": {"my_schema__multi_partitioned": {"config": {"value": "1"}}}
+                "ops": {"my_schema__multi_partitioned": {"config": {"value": "1"}}},
             },
         )
         assert res.success
